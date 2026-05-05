@@ -17,6 +17,16 @@ import pt.unl.fct.di.novasys.iot.device.I2CDevice;
 
 import java.io.IOException;
 
+/**
+ * Driver for the Grove 3-Axis Digital Accelerometer (MMA7660FC). Wakes the
+ * MMA7660 into active mode at 32 samples/sec and exposes raw axis readings,
+ * acceleration in g, and a richer {@link AccelData} record with looked-up
+ * angle data (the chip reports values from 0–63 which are pre-mapped to
+ * angles in {@link AccelLookup}, including a "tilt sentinel" value of 255
+ * for indices 22–42 where the chip cannot report a meaningful angle).
+ *
+ * <p>The chip is on I²C address {@code 0x4C} and is opened on bus 1.
+ */
 public class Grove3AxisAccelerometer implements I2CDevice {
 	
     public final static int MMA7660_ADDR = 0x4c;
@@ -56,6 +66,13 @@ public class Grove3AxisAccelerometer implements I2CDevice {
 
     private AccelLookup[] accLookup;
 
+    /**
+     * Opens the I²C handle, builds the lookup table, and puts the chip
+     * into active mode at 32 Hz.
+     *
+     * @param pi4j Pi4J context
+     * @throws IOException if the chip cannot be initialised
+     */
     public Grove3AxisAccelerometer(Context pi4j) throws IOException {
         I2CConfigBuilder configtext = I2C.newConfigBuilder(pi4j);
         configtext.id("Grovepi-plus" + MMA7660_ADDR);
@@ -125,6 +142,14 @@ public class Grove3AxisAccelerometer implements I2CDevice {
         setMode(MMA7660_ACTIVE);
     }
 
+    /**
+     * Reads the raw signed axis values (X, Y, Z), busy-retrying through
+     * the chip's "alert" bit until a clean reading is obtained, with a
+     * {@link #MMA7660_TIMEOUT}-microsecond cap.
+     *
+     * @return a 3-element array of raw axis values in 6-bit two's
+     *         complement (range −32..31)
+     */
     public int[] getXYZ() {
         byte[] val = new byte[3];
         int count = 0;
@@ -194,6 +219,13 @@ public class Grove3AxisAccelerometer implements I2CDevice {
         return xyz;
     } */
 
+    /**
+     * Reads acceleration in g (1 g ≈ 9.81 m/s²). Each axis is the raw
+     * {@link #getXYZ()} value divided by 21 (the MMA7660's
+     * counts-per-g constant in 1.5 g full-scale mode).
+     *
+     * @return a 3-element array of accelerations in g
+     */
     public float[] getAcceleration() {
         float[] a_xyz = new float[3];
         int[] xyz = getXYZ();
@@ -205,6 +237,12 @@ public class Grove3AxisAccelerometer implements I2CDevice {
         return a_xyz;
     }
 
+    /**
+     * Reads the chip and returns the looked-up {@link AccelData} record
+     * with per-axis g and angle values.
+     *
+     * @return acceleration plus angle data for each axis
+     */
     public AccelData getAccelerationData() {
         byte[] val = new byte[3];
         int count;
@@ -239,6 +277,14 @@ public class Grove3AxisAccelerometer implements I2CDevice {
         return new AccelData(x, y, z);
     }
 
+    /**
+     * Bulk-reads the first 11 chip registers and exposes them as an
+     * {@link MMA7660Data} record. Useful when debugging the chip's tilt,
+     * sample-count, interrupt-source, mode, sample-rate, and pulse-detect
+     * registers in one go.
+     *
+     * @return all 11 register values, unsigned
+     */
     public MMA7660Data getAllData() {
         byte[] data_buf = new byte[11];
 
@@ -261,6 +307,7 @@ public class Grove3AxisAccelerometer implements I2CDevice {
         return data;
     }
 
+    /** Closes the underlying I²C handle. */
     public void close() { accelerometer.close(); }
 
     private class AccelLookup {
@@ -277,6 +324,16 @@ public class Grove3AxisAccelerometer implements I2CDevice {
         }
     }
 
+    /**
+     * One reading from the accelerometer expressed as g and angle data
+     * for each axis. {@code xyAngle} of 255 means the chip cannot report
+     * a meaningful angle (the value falls in the chip's tilt-sentinel
+     * range).
+     *
+     * @param x X-axis lookup
+     * @param y Y-axis lookup
+     * @param z Z-axis lookup
+     */
     public record AccelData(AccelLookup x, AccelLookup y, AccelLookup z) {
         @Override
         public String toString() {
@@ -284,6 +341,21 @@ public class Grove3AxisAccelerometer implements I2CDevice {
         }
     }
 
+    /**
+     * Snapshot of the first 11 MMA7660 registers (all unsigned).
+     *
+     * @param x     X axis (XOUT)
+     * @param y     Y axis (YOUT)
+     * @param z     Z axis (ZOUT)
+     * @param tilt  TILT register
+     * @param srst  sample-rate-status register
+     * @param spcnt sleep-count register
+     * @param intsu interrupt-source register
+     * @param mode  mode register
+     * @param sr    sample-rate register
+     * @param pdet  pulse-detect register
+     * @param pd    pulse-detect parameters register
+     */
     public record MMA7660Data(int x, int y, int z, int tilt, int srst, int spcnt,
                     int intsu, int mode, int sr, int pdet, int pd){
 

@@ -20,6 +20,18 @@ import pt.unl.fct.di.novasys.iot.device.I2CDevice;
 import java.io.IOException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+/**
+ * Driver for the Grove RGB LCD 16×2. Wraps the upstream
+ * {@link com.github.yafna.raspberry.grovepi.devices.GroveRgbLcd} and adds
+ * synchronisation plus a background scrolling thread for strings longer
+ * than 32 characters.
+ *
+ * <p>Talks to two I²C devices: one for the LCD text controller
+ * ({@code DISPLAY_TEXT_ADDR}) and one for the RGB backlight
+ * ({@code DISPLAY_RGB_ADDR}). Use {@link #execRGB} / {@link #execTEXT}
+ * to run a custom sequence against either controller while holding the
+ * device monitor.
+ */
 public class GroveRgbLcd extends com.github.yafna.raspberry.grovepi.devices.GroveRgbLcd
 	implements I2CDevice {
 	
@@ -33,6 +45,13 @@ public class GroveRgbLcd extends com.github.yafna.raspberry.grovepi.devices.Grov
 	
 	private AtomicBoolean runText;
 	
+	/**
+	 * Opens the I²C handles for both the RGB and text controllers and
+	 * runs the upstream init sequence.
+	 *
+	 * @param pi4j Pi4J context
+	 * @throws IOException if the LCD cannot be initialised
+	 */
 	public GroveRgbLcd(Context pi4j) throws IOException {
 		I2CConfigBuilder configrgb = I2C.newConfigBuilder(pi4j);
 		configrgb.id("Grovepi-plus" + DISPLAY_RGB_ADDR);
@@ -56,12 +75,21 @@ public class GroveRgbLcd extends com.github.yafna.raspberry.grovepi.devices.Grov
 		this.runText = new AtomicBoolean(false);
 	}
 
+	/** Closes the I²C handles for both the text and RGB controllers. */
 	@Override
 	public void close() {
 		rgb.close();
 		text.close();
 	}
 
+	/**
+	 * Replaces the displayed text. Strings up to 32 characters are
+	 * written directly; longer strings are scrolled in a background
+	 * thread at one frame every 800 ms. Calling this method again
+	 * cancels the previous scroll thread before installing the new text.
+	 *
+	 * @param s the text to show
+	 */
 	public synchronized void setText(String s) {
 		if(this.runText.getAcquire()) {
 			this.runText.set(false);
@@ -123,6 +151,13 @@ public class GroveRgbLcd extends com.github.yafna.raspberry.grovepi.devices.Grov
 		this.scrolling.start();
 	}
 	 
+	/**
+	 * Runs a sequence of I²C operations against the RGB backlight
+	 * controller, holding the device monitor for the duration.
+	 *
+	 * @param sequence the sequence to run
+	 * @throws IOException if the sequence raises an I/O error
+	 */
 	@Override
 	public void execRGB(GrovePiSequenceVoid<?> sequence) throws IOException {
 		synchronized (this) {
@@ -130,6 +165,14 @@ public class GroveRgbLcd extends com.github.yafna.raspberry.grovepi.devices.Grov
 		}
 	}
 
+	/**
+	 * Runs a sequence of I²C operations against the LCD text controller,
+	 * holding the device monitor for the duration so concurrent scrolls
+	 * cannot interleave their writes.
+	 *
+	 * @param sequence the sequence to run
+	 * @throws IOException if the sequence raises an I/O error
+	 */
 	@Override
 	public void execTEXT(GrovePiSequenceVoid<?> sequence) throws IOException {
 		synchronized (this) {

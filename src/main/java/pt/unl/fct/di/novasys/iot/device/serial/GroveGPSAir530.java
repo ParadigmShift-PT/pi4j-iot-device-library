@@ -6,6 +6,19 @@ import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 
+/**
+ * Driver for the Grove GPS Air530 module. Opens the Pi's serial port
+ * ({@code /dev/serial0}) at 9600 N81, runs a background reader thread
+ * that parses NMEA 0183 sentences (GGA, GLL, GSA, GSV, RMC, VTG, ZDA,
+ * TXT) and feeds them into a thread-safe {@link GPSData} object the
+ * caller can poll at any time.
+ *
+ * <p>Only the Pi 4 is supported by upstream Pi4J for serial I/O — the
+ * Pi 5 lacks a serial provider in the version this library is pinned to.
+ *
+ * <p>Lifecycle: construct → {@link #start()} → poll
+ * {@link #getGPSData()} → {@link #stop()}.
+ */
 public class GroveGPSAir530 {
     private final Serial serial;
 
@@ -14,6 +27,12 @@ public class GroveGPSAir530 {
     private volatile boolean running = false;
     private Thread reader;
 
+    /**
+     * Opens the serial port handle. Does not start reading — call
+     * {@link #start()} for that.
+     *
+     * @param pi4j Pi4J context
+     */
     public GroveGPSAir530(Context pi4j) {
         var config = Serial.newConfigBuilder(pi4j)
                          .device("/dev/serial0")
@@ -24,6 +43,11 @@ public class GroveGPSAir530 {
         this.data = new GPSData();
     }
 
+    /**
+     * Opens the serial port and starts the background reader thread.
+     * Subsequent calls to {@link #getGPSData()} will reflect the latest
+     * parsed sentence.
+     */
     public void start() {
         serial.open();
         running = true;
@@ -31,6 +55,10 @@ public class GroveGPSAir530 {
         reader.start();
     }
 
+    /**
+     * Signals the reader thread to terminate, interrupts any pending
+     * I/O wait, and closes the serial port.
+     */
     public void stop() {
         running = false;
         if (reader != null) {
@@ -404,8 +432,26 @@ public class GroveGPSAir530 {
         }
     }
 
+    /**
+     * Returns the live {@link GPSData} aggregator. Every parsed NMEA
+     * sentence updates this object in place; readers see the most
+     * recent values consistent with the per-field {@code volatile}
+     * publication used inside {@code GPSData}.
+     *
+     * @return the live GPS data view
+     */
     public GPSData getGPSData() { return this.data; }
 
+    /**
+     * Aggregated GPS state, updated by the background reader from the
+     * stream of NMEA sentences. All fields are individually volatile so
+     * external readers always see a published value, but consistency
+     * <em>across</em> fields is only guaranteed inside a
+     * {@code synchronized(data)} block.
+     *
+     * <p>Setters are package-private — only the parser writes to the
+     * fields. The getters are intentionally simple accessors.
+     */
     public class GPSData {
         private volatile double latitude = 0.0;
         private volatile double longitude = 0.0;
@@ -483,34 +529,49 @@ public class GroveGPSAir530 {
             this.utcDateTime = utcDateTime;
         }
 
+        /** @return latitude in decimal degrees (positive = north) */
         public double getLatitude() { return latitude; }
 
+        /** @return longitude in decimal degrees (positive = east) */
         public double getLongitude() { return longitude; }
 
+        /** @return {@code true} when the receiver currently has a fix */
         public boolean hasValidFix() { return validFix; }
 
+        /** @return ground speed in knots */
         public float getSpeed() { return speed; }
 
+        /** @return course over ground in degrees true */
         public float getCourse() { return course; }
 
+        /** @return altitude in metres above mean sea level */
         public float getAltitude() { return altitude; }
 
+        /** @return number of satellites used in the current solution */
         public int getSatellitesUsed() { return satellitesUsed; }
 
+        /** @return total satellites visible (across all constellations) */
         public int getVisibleSatellites() { return visibleSatellites; }
 
+        /** @return BeiDou satellites visible (subset reported separately by some receivers) */
         public int getBeidouSatellites() { return beidouSatellites; }
 
+        /** @return horizontal dilution of precision */
         public float getHDOP() { return hdop; }
 
+        /** @return UTC time of the last fix as raw NMEA hhmmss[.sss] */
         public String getFixTime() { return fixTime; }
 
+        /** @return UTC date of the last fix as raw NMEA ddmmyy */
         public String getFixDate() { return fixDate; }
 
+        /** @return human-readable fix-type label (e.g., "GPS Fix", "DGPS Fix", "No Fix") */
         public String getFixType() { return fixType; }
 
+        /** @return antenna status text from the receiver (when available) */
         public String getAntennaStatus() { return antennaStatus; }
 
+        /** @return UTC date and time formatted as {@code yyyy-MM-dd HH:mm:ss UTC} from the ZDA sentence */
         public String getUtcDateTime() { return utcDateTime; }
 
         public String toString() {

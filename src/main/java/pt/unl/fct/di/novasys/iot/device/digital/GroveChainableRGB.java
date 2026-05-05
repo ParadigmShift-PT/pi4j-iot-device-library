@@ -4,6 +4,17 @@ import com.pi4j.context.Context;
 import com.pi4j.io.gpio.digital.DigitalOutput;
 import com.pi4j.io.gpio.digital.DigitalState;
 
+/**
+ * Driver for the Grove Chainable RGB LED (P9813-based). Daisy-chained
+ * modules share two pins — clock ({@code line}) and data
+ * ({@code line + 1}) — and each module is addressed by index along the
+ * chain. Per-LED colours are kept in {@code ledState} so a write to one
+ * LED preserves the others.
+ *
+ * <p>Both RGB and HSB colour models are supported via
+ * {@link #setColorRGB(byte, byte, byte, byte)} and
+ * {@link #setColorHSB(byte, float, float, float)}.
+ */
 public class GroveChainableRGB extends DigitalOutputDevice {
     private final static int RED = 0;
     private final static int GREEN = 1;
@@ -14,6 +25,15 @@ public class GroveChainableRGB extends DigitalOutputDevice {
 
     private byte[] ledState;
 
+    /**
+     * Constructs a chainable RGB LED string.
+     *
+     * @param pi4j    Pi4J context
+     * @param name    human-readable name
+     * @param line    clock pin (data pin is {@code line + 1})
+     * @param ID      caller-assigned device identifier
+     * @param numLeds number of LED modules in the chain
+     */
     public GroveChainableRGB(Context pi4j, String name, int line, int ID,
                              int numLeds) {
         super(pi4j,
@@ -39,6 +59,11 @@ public class GroveChainableRGB extends DigitalOutputDevice {
         }
     }
 
+    /**
+     * Pulses the clock line low → high with the standard 20 µs delay
+     * either side. Public to allow callers to interleave custom protocol
+     * sequences if needed.
+     */
     public void clk() {
         clk.state(DigitalState.LOW);
         delayMicroseconds(PULSE_DELAY);
@@ -86,6 +111,16 @@ public class GroveChainableRGB extends DigitalOutputDevice {
         sendByte(red);
     }
 
+    /**
+     * Updates one LED in the chain. The write is sent to every LED in a
+     * single frame; this method preserves the other LEDs' last-known
+     * colours by reading from {@code ledState}.
+     *
+     * @param led   index of the target LED (0-based)
+     * @param red   red intensity (0–255)
+     * @param green green intensity (0–255)
+     * @param blue  blue intensity (0–255)
+     */
     public void setColorRGB(byte led, byte red, byte green, byte blue) {
         // send data frame prefix (32x "0")
         sendByte((byte)0x00);
@@ -116,6 +151,15 @@ public class GroveChainableRGB extends DigitalOutputDevice {
         return Math.max(min, Math.min(max, value));
     }
     
+    /**
+     * Updates one LED using the HSB colour model. Inputs are clamped to
+     * the unit interval and converted to RGB before writing.
+     *
+     * @param led        index of the target LED (0-based)
+     * @param hue        hue, 0.0 – 1.0
+     * @param saturation saturation, 0.0 – 1.0
+     * @param brightness brightness / lightness, 0.0 – 1.0
+     */
     public void setColorHSB(byte led, float hue, float saturation,
                             float brightness) {
         float r, g, b;
@@ -160,5 +204,6 @@ public class GroveChainableRGB extends DigitalOutputDevice {
         return p;
     }
 
+    /** @return the number of LEDs in this chain */
     public int getNumLeds() { return numLeds; }
 }

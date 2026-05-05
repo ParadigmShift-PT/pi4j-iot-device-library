@@ -4,9 +4,28 @@ import com.pi4j.context.Context;
 import com.pi4j.io.gpio.digital.DigitalOutput;
 import com.pi4j.io.gpio.digital.DigitalState;
 
+/**
+ * Driver for the Grove Buzzer (active piezo). Plays single tones, named
+ * notes from the lower-case octave, and pre-built {@link Melody}
+ * sequences ({@link Melody#TWINKLE_TWINKLE}, {@link Melody#HAPPY_BIRTHDAY},
+ * {@link Melody#JINGLE_BELLS}, {@link Melody#MARIO_THEME}).
+ *
+ * <p>Tones are produced by toggling the output pin at a fixed half-period
+ * (in microseconds), so this device occupies its calling thread for the
+ * duration of {@link #playTone(int, int)}; consider playing melodies on a
+ * background thread if you need responsiveness elsewhere.
+ */
 public class GroveBuzzer extends DigitalOutputDevice {
     private Melody mel;
 
+    /**
+     * Constructs a buzzer driven from a single output pin.
+     *
+     * @param pi4j Pi4J context
+     * @param name human-readable name
+     * @param line BCM pin number
+     * @param ID   caller-assigned device identifier
+     */
     public GroveBuzzer(Context pi4j, String name, int line, int ID) {
         super(pi4j,
               DigitalOutput.newConfigBuilder(pi4j)
@@ -18,6 +37,14 @@ public class GroveBuzzer extends DigitalOutputDevice {
               ID);
     }
 
+    /**
+     * Plays the melody previously installed via
+     * {@link #setMelody(Melody)} (or the {@link Melody#getNotes()} /
+     * {@link Melody#getBeats()} / {@link Melody#getTempo()} setters).
+     *
+     * @throws IllegalStateException if no melody has been set
+     * @throws InterruptedException  if the inter-note sleep is interrupted
+     */
     public void playMelody()
         throws IllegalStateException, InterruptedException {
         if (mel == null) {
@@ -34,6 +61,13 @@ public class GroveBuzzer extends DigitalOutputDevice {
         }
     }
 
+    /**
+     * Plays the supplied melody once. Does not modify the buzzer's
+     * configured melody.
+     *
+     * @param mel the melody to play
+     * @throws InterruptedException if the inter-note sleep is interrupted
+     */
     public void playMelody(Melody mel) throws InterruptedException {
         for (int i = 0; i < mel.notes.length; i++) {
             if (mel.notes[i] == ' ') {
@@ -45,6 +79,15 @@ public class GroveBuzzer extends DigitalOutputDevice {
         }
     }
 
+    /**
+     * Plays a named note from the lower-case octave (one of
+     * {@code 'c'}, {@code 'd'}, {@code 'e'}, {@code 'f'}, {@code 'g'},
+     * {@code 'a'}, {@code 'b'}, or {@code 'C'}). Unknown characters are
+     * silent.
+     *
+     * @param note     the note character
+     * @param duration milliseconds to hold the note
+     */
     public void playNote(char note, int duration) {
         // not sure if the commented-out notes are even be distinguishable
         char notes[] = {
@@ -64,6 +107,13 @@ public class GroveBuzzer extends DigitalOutputDevice {
         }
     }
 
+    /**
+     * Sounds a square-wave tone by toggling the output pin. Busy-loops on
+     * the calling thread for the full duration.
+     *
+     * @param tone     half-period in microseconds (smaller = higher pitch)
+     * @param duration tone duration in milliseconds
+     */
     public void playTone(int tone, int duration) {
         for (long i = 0; i < duration * 1000L; i += tone * 2) {
             dataOut.state(DigitalState.HIGH);
@@ -73,22 +123,50 @@ public class GroveBuzzer extends DigitalOutputDevice {
         }
     }
 
+    /** @return the notes of the configured melody */
     public char[] getNotes() { return mel.notes; }
 
+    /**
+     * Replaces the notes of the configured melody.
+     * @param notes the new notes
+     */
     public void setNotes(char... notes) { this.mel.notes = notes; }
 
+    /** @return the beat counts of the configured melody */
     public int[] getBeats() { return mel.beats; }
 
+    /**
+     * Replaces the beat counts of the configured melody.
+     * @param beats the new beat counts
+     */
     public void setBeats(int... beats) { this.mel.beats = beats; }
 
+    /** @return the tempo (millisecond multiplier) of the configured melody */
     public int getTempo() { return mel.tempo; }
 
+    /**
+     * Replaces the tempo of the configured melody.
+     * @param tempo the new tempo (millisecond multiplier per beat)
+     */
     public void setTempo(int tempo) { this.mel.tempo = tempo; }
 
+    /** @return the configured melody, or {@code null} if none has been set */
     public Melody getMelody() { return mel; }
 
+    /**
+     * Installs a melody to be played by {@link #playMelody()}.
+     * @param mel the melody to install
+     */
     public void setMelody(Melody mel) { this.mel = mel; }
 
+    /**
+     * Immutable description of a melody: a sequence of notes, a parallel
+     * sequence of beat counts, and a tempo (millisecond multiplier per
+     * beat). A note of {@code ' '} is treated as a rest. Use the
+     * {@link Builder} or one of the pre-built constants
+     * ({@link #TWINKLE_TWINKLE}, {@link #HAPPY_BIRTHDAY},
+     * {@link #JINGLE_BELLS}, {@link #MARIO_THEME}) to build instances.
+     */
     public static class Melody {
         private char[] notes;
         private int[] beats;
@@ -138,34 +216,65 @@ public class GroveBuzzer extends DigitalOutputDevice {
             this.tempo = builder.tempo;
         }
 
+        /** @return the notes in this melody */
         public char[] getNotes() { return notes; }
 
+        /** @return the per-note beat counts */
         public int[] getBeats() { return beats; }
 
+        /** @return the tempo (millisecond multiplier per beat) */
         public int getTempo() { return tempo; }
 
+        /** @return the number of notes in this melody */
         public int getLength() { return notes.length; }
 
+        /**
+         * Fluent builder for {@link Melody}. Notes and beats are required
+         * and must have the same length; tempo defaults to 300 ms per beat.
+         */
         public static class Builder {
             private char[] notes;
             private int[] beats;
             private int tempo = 300; // default
 
+            /**
+             * Sets the note sequence. {@code ' '} is treated as a rest.
+             * @param notes the notes
+             * @return this builder
+             */
             public Builder notes(char... notes) {
                 this.notes = notes;
                 return this;
             }
 
+            /**
+             * Sets the beat count for each note. Must have the same length
+             * as {@link #notes(char...)}.
+             * @param beats per-note beat counts
+             * @return this builder
+             */
             public Builder beats(int... beats) {
                 this.beats = beats;
                 return this;
             }
 
+            /**
+             * Sets the tempo (millisecond multiplier per beat). Defaults to 300.
+             * @param tempo new tempo
+             * @return this builder
+             */
             public Builder tempo(int tempo) {
                 this.tempo = tempo;
                 return this;
             }
 
+            /**
+             * Builds the melody.
+             *
+             * @return the new melody
+             * @throws IllegalStateException if notes or beats are unset, or
+             *                               their lengths differ
+             */
             public Melody build() {
                 if (notes == null || beats == null || notes.length == 0 ||
                     beats.length == 0) {
@@ -182,6 +291,7 @@ public class GroveBuzzer extends DigitalOutputDevice {
             }
         }
 
+        /** @return a fresh melody builder */
         public static Builder newBuilder() { return new Builder(); }
     }
 }

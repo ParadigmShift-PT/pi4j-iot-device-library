@@ -18,22 +18,39 @@ import com.pi4j.io.i2c.I2CConfigBuilder;
 
 import pt.unl.fct.di.novasys.iot.device.I2CDevice;
 
+/**
+ * Driver for the Grove RGB LED Matrix (8×8). Wraps the matrix's I²C
+ * command set with high-level operations: per-pixel colour, full-frame
+ * fill, built-in emojis and animations, level bars, snapshots, and
+ * orientation control.
+ *
+ * <p>Lives at I²C address {@code 0x65}. Construction enables the
+ * indicator LED and clears the display.
+ *
+ * <p>Colours are encoded as a single byte; the constants
+ * {@link #red}, {@link #orange}, {@link #yellow}, {@link #green},
+ * {@link #cyan}, {@link #blue}, {@link #purple}, {@link #pink},
+ * {@link #white}, and {@link #black} cover the common palette.
+ * Animations and emojis are selected via the {@link Animation},
+ * {@link Emoji}, and {@link Orientation} enums.
+ */
 @SuppressWarnings("unused")
 public class GroveLedMatrix implements I2CDevice {
+	/** I²C address of the LED Matrix. */
 	public final static int LED_DISPLAY_ADDR = 0x65;
 
 	private final I2C matrix;
 
-	public static final byte red = (byte) 0x00;
-	public static final byte orange = (byte) 0x12;
-	public static final byte yellow = (byte) 0x18;
-	public static final byte green = (byte) 0x52;
-	public static final byte cyan = (byte) 0x7f;
-	public static final byte blue = (byte) 0xaa;
-	public static final byte purple = (byte) 0xc3;
-	public static final byte pink = (byte) 0xdc;
-	public static final byte white = (byte) 0xfe;
-	public static final byte black = (byte) 0xff;
+	/** Colour palette: red. */ public static final byte red = (byte) 0x00;
+	/** Colour palette: orange. */ public static final byte orange = (byte) 0x12;
+	/** Colour palette: yellow. */ public static final byte yellow = (byte) 0x18;
+	/** Colour palette: green. */ public static final byte green = (byte) 0x52;
+	/** Colour palette: cyan. */ public static final byte cyan = (byte) 0x7f;
+	/** Colour palette: blue. */ public static final byte blue = (byte) 0xaa;
+	/** Colour palette: purple. */ public static final byte purple = (byte) 0xc3;
+	/** Colour palette: pink. */ public static final byte pink = (byte) 0xdc;
+	/** Colour palette: white. */ public static final byte white = (byte) 0xfe;
+	/** Colour palette: black (off). */ public static final byte black = (byte) 0xff;
 
 	private static final byte I2C_CMD_CONTINUE_DATA	= (byte) 0x81;
 
@@ -80,20 +97,27 @@ public class GroveLedMatrix implements I2CDevice {
 
 	private byte[] display; 
 	
+	/** Rotation applied to subsequent display writes. */
 	public static enum Orientation {
-		ZeroDegrees((byte) 0x0),
-		NinetyDegrees((byte) 0x1),
-		OneEightyDegrees((byte) 0x2),
-		TwoSeventyDegrees((byte) 0x3);
-		
+		/** No rotation. */ ZeroDegrees((byte) 0x0),
+		/** Rotated 90° clockwise. */ NinetyDegrees((byte) 0x1),
+		/** Rotated 180°. */ OneEightyDegrees((byte) 0x2),
+		/** Rotated 270° clockwise. */ TwoSeventyDegrees((byte) 0x3);
+
+		/** Wire-format byte for this orientation. */
 		public final byte code;
-		
+
 		Orientation(byte code) {
 			this.code = code;
 		}
 	}
 	
+	/**
+	 * Built-in emoji set baked into the matrix's firmware. Selected via
+	 * {@link #displayEmoji(Emoji)}.
+	 */
 	public static enum Emoji {
+		/** Smile face. */
 		Smile(0),
 		Laught(1),
 		Sad(2),
@@ -123,10 +147,11 @@ public class GroveLedMatrix implements I2CDevice {
 		Crab(26),
 		Duck(27),
 		Rabbit(28),
-		Cat(29);
-		
+		/** Cat. */ Cat(29);
+
+		/** Wire-format integer for this emoji. */
 		public final int code;
-		
+
 		Emoji(int code) {
 			this.code = code;
 		}
@@ -140,21 +165,33 @@ public class GroveLedMatrix implements I2CDevice {
     // *			3. fire
     // *			4. walking child
     // *			5. broken heart
+	/**
+	 * Built-in firmware animations. Selected via
+	 * {@link #displayColorAnimation(Animation)}.
+	 */
 	public static enum Animation {
-		BigClock(0),
-		SmallClock(1),
-		Rainbow(2),
-		Fire(3),
-		WalkingChild(4),
-		BrokenHeart(5);
-		
+		/** Big clockwise sweep. */ BigClock(0),
+		/** Small clockwise sweep. */ SmallClock(1),
+		/** Rainbow cycle. */ Rainbow(2),
+		/** Fire / flame animation. */ Fire(3),
+		/** Walking child animation. */ WalkingChild(4),
+		/** Broken-heart animation. */ BrokenHeart(5);
+
+		/** Wire-format integer for this animation. */
 		public final int code;
-		
+
 		Animation(int code) {
 			this.code = code;
 		}
 	}
 	
+	/**
+	 * Opens the I²C handle, enables the indicator LED, and clears the
+	 * display.
+	 *
+	 * @param pi4j Pi4J context
+	 * @throws IOException if the matrix cannot be initialised
+	 */
 	public GroveLedMatrix(Context pi4j) throws IOException {
 		I2CConfigBuilder configtext = I2C.newConfigBuilder(pi4j);
 		configtext.id("Grovepi-plus" + LED_DISPLAY_ADDR);
@@ -193,6 +230,7 @@ public class GroveLedMatrix implements I2CDevice {
 		matrix.write(cmd);
 	}
 	
+	/** Turns off every pixel and pushes the cleared frame to the matrix. */
 	public void clearDisplay() {
 		for(int i = 0; i < 8; i++)
 			for(int j = 0; j < 8; j++)
@@ -202,17 +240,40 @@ public class GroveLedMatrix implements I2CDevice {
 		
 	}
 
+	/**
+	 * Changes the display orientation for subsequent writes.
+	 *
+	 * @param orientation the rotation to apply
+	 */
 	public void setDisplayOrientation(Orientation orientation) {
 		byte[] cmd = {I2C_CMD_DISP_ROTATE, orientation.code};
 		matrix.write(cmd);
 		
 	}
 		
+	/**
+	 * Fills every pixel with one RGB colour. Bypasses the local frame
+	 * buffer — subsequent {@link #setPixelColor(int, int, byte)} calls
+	 * may overwrite this fill from the buffered state.
+	 *
+	 * @param red   red intensity (0–255)
+	 * @param green green intensity (0–255)
+	 * @param blue  blue intensity (0–255)
+	 */
 	public void setAllColor(byte red, byte green, byte blue) {
 		byte[] cmd = {I2C_CMD_DISP_COLOR_BLOCK, red, green, blue, 0xf, 0xf, 0x01};
 		matrix.write(cmd);
 	}
 	
+	/**
+	 * Lights one pixel and refreshes the display.
+	 *
+	 * @param x     row, 0 (top) to 7 (bottom)
+	 * @param y     column, 0 (left) to 7 (right)
+	 * @param color one of the palette constants
+	 *              ({@link #red}, {@link #orange}, …, {@link #black})
+	 * @throws Exception if {@code x} or {@code y} are outside [0, 8)
+	 */
 	public void setPixelColor(int x, int y, byte color) throws Exception {
 		if(x < 0 || x >= 8 || y < 0 || y >= 8) {
 			throw new Exception("Invalid coordinate (coordinates should be between [0,8[");
@@ -232,6 +293,12 @@ public class GroveLedMatrix implements I2CDevice {
     // *			7	cool	17	sword		    27	duck
     // *			8	shy	    18	wooden sword	28	rabbit
     // *			9	awkward	19	crystal sword	29	cat
+    /**
+     * Plays one of the firmware-baked emojis. Display is held until the
+     * caller switches to a different content.
+     *
+     * @param emoji the emoji to show
+     */
     public void displayEmoji(Emoji emoji){
 		byte cmd[] = new byte[8 + (8*8) + 3];
 		cmd[0] = I2C_CMD_DISP_EMOJI;
@@ -253,6 +320,12 @@ public class GroveLedMatrix implements I2CDevice {
 
     }
 
+    /**
+     * Renders a colour level bar. Bar values run 0–32 (5 columns × 8
+     * rows ≈ 32 LEDs in the bar).
+     *
+     * @param bar bar level (0–32)
+     */
     public void displayColorBar(int bar){
 		byte cmd[] = new byte[8 + (8*8) + 3];
 		cmd[0] = I2C_CMD_DISP_COLOR_BAR;
@@ -275,6 +348,13 @@ public class GroveLedMatrix implements I2CDevice {
     // *			4. walking child
     // *			5. broken heart
 
+    /**
+     * Plays a firmware animation (rainbow cycle, fire, walking child,
+     * broken heart, big / small clockwise sweep). Display is held until
+     * the caller switches to different content.
+     *
+     * @param animation the animation to play
+     */
     public void displayColorAnimation(Animation animation){
 		byte cmd[] = new byte[8 + (8*8) + 3];
 		cmd[0] = I2C_CMD_DISP_COLOR_ANIMATION;
@@ -327,10 +407,23 @@ public class GroveLedMatrix implements I2CDevice {
 
     }
 	
+    /**
+     * Returns a defensive copy of the local 64-byte frame buffer
+     * representing the current display state.
+     *
+     * @return a copy of the current frame buffer
+     */
     public byte[] getSnapshot() {
     	return this.display.clone();
     }
-    
+
+    /**
+     * Restores a frame buffer captured by {@link #getSnapshot()} and
+     * pushes it to the matrix. The snapshot is silently ignored if its
+     * length doesn't match the 64-byte buffer.
+     *
+     * @param snapshot a 64-byte frame buffer
+     */
     public void loadSnapshot(byte[] snapshot) {
     	if(display.length == snapshot.length) {
     		System.arraycopy(snapshot, 0, this.display, 0, this.display.length);
@@ -338,6 +431,7 @@ public class GroveLedMatrix implements I2CDevice {
     	}
     }
     
+	/** Closes the underlying I²C handle. */
 	public void close() {
 		matrix.close();
 	}

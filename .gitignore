@@ -31,3 +31,5 @@ replay_pid*
 /target/
 /bin/
 */.DS_Store/
+
+._*

@@ -8,8 +8,22 @@ import com.pi4j.io.i2c.I2CConfigBuilder;
 import java.io.IOException;
 import pt.unl.fct.di.novasys.iot.device.I2CDevice;
 
+/**
+ * Driver for the Grove Barometer Sensor (BMP280). Reads on-chip
+ * calibration constants at construction and uses them to convert raw ADC
+ * readings into temperature, pressure, and barometric altitude.
+ *
+ * <p>The chip lives at I²C address {@code 0x77} on bus 1 and is
+ * configured for "ultra-high-resolution" oversampling
+ * ({@code CONTROL = 0x3F}) at construction.
+ *
+ * <p>{@link #calcAltitude()} uses {@link #STANDARD_SEA_LEVEL} as the
+ * reference; pass a local sea-level pressure to
+ * {@link #calcAltitude(double)} for higher accuracy.
+ */
 public class GroveBarometer implements I2CDevice {
 
+    /** Standard atmospheric pressure at sea level in pascals (101 325 Pa). */
     public final static int STANDARD_SEA_LEVEL = 101325; // in Pa
 
     private final static int BMP280_ADDRESS = 0x77;
@@ -54,6 +68,13 @@ public class GroveBarometer implements I2CDevice {
     private short dig_P9; // int16_t
     private int t_fine;   // int32_t
 
+    /**
+     * Opens the I²C handle, reads the calibration registers, and arms
+     * the chip for measurements.
+     *
+     * @param pi4j Pi4J context
+     * @throws IOException if the chip cannot be initialised
+     */
     public GroveBarometer(Context pi4j) throws IOException {
         I2CConfigBuilder configtext = I2C.newConfigBuilder(pi4j);
         configtext.id("Grovepi-plus" + BMP280_ADDRESS);
@@ -105,6 +126,11 @@ public class GroveBarometer implements I2CDevice {
         return data;
     }
 
+    /**
+     * Reads and compensates the chip's temperature register.
+     *
+     * @return temperature in degrees Celsius
+     */
     public double getTemperature() {
         int var1, var2;
         int adcT = read24(BMP280_REG_TEMPDATA);
@@ -123,6 +149,14 @@ public class GroveBarometer implements I2CDevice {
         return T / 100;
     }
 
+    /**
+     * Reads and compensates the chip's pressure register. Internally
+     * calls {@link #getTemperature()} to refresh the temperature
+     * compensation term used by the BMP280's pressure formula.
+     *
+     * @return pressure in pascals (Pa), or 0 if the calibration
+     *         constants are zeroed (chip not initialised)
+     */
     public long getPressure() {
         long var1, var2, p;
         getTemperature();
@@ -150,18 +184,42 @@ public class GroveBarometer implements I2CDevice {
         return result;
     }
 
+    /**
+     * Computes barometric altitude using {@link #STANDARD_SEA_LEVEL} as
+     * the reference pressure. Reads temperature and pressure from the
+     * chip.
+     *
+     * @return altitude in metres
+     */
     public double calcAltitude() {
         double t = getTemperature();
         double p1 = getPressure();
         return calcAltitude(STANDARD_SEA_LEVEL, p1, t);
     }
 
+    /**
+     * Computes barometric altitude using a caller-supplied sea-level
+     * reference. Reads temperature and pressure from the chip.
+     *
+     * @param p0 reference sea-level pressure in pascals
+     * @return altitude in metres
+     */
     public double calcAltitude(double p0) {
         double t = getTemperature();
         double p1 = getPressure();
         return calcAltitude(p0, p1, t);
     }
 
+    /**
+     * Pure altitude calculation from supplied pressures and temperature
+     * — useful when the caller has already read p1 and t and does not
+     * want a second I²C round-trip.
+     *
+     * @param p0 reference sea-level pressure in pascals
+     * @param p1 measured pressure in pascals
+     * @param t  temperature in degrees Celsius
+     * @return altitude in metres
+     */
     public double calcAltitude(double p0, double p1, double t) {
         double C;
         C = (p0 / p1);
@@ -170,16 +228,36 @@ public class GroveBarometer implements I2CDevice {
         return C;
     }
 
+    /**
+     * Returns a {@link BarometerData} record using a caller-supplied
+     * sea-level reference pressure for altitude.
+     *
+     * @param pressure reference sea-level pressure in pascals
+     * @return temperature, pressure, and altitude in one record
+     */
     public BarometerData getBarometerData(double pressure) {
         return new BarometerData(getTemperature(), getPressure(),
                                  calcAltitude(pressure));
     }
 
+    /**
+     * Returns a {@link BarometerData} record using
+     * {@link #STANDARD_SEA_LEVEL} as the altitude reference.
+     *
+     * @return temperature, pressure, and altitude in one record
+     */
     public BarometerData getBarometerData() {
         return new BarometerData(getTemperature(), getPressure(),
                                  calcAltitude());
     }
 
+    /**
+     * One reading from the barometer.
+     *
+     * @param temperature temperature in degrees Celsius
+     * @param pressure    pressure in pascals (Pa)
+     * @param altitude    altitude in metres above the reference level
+     */
     public record BarometerData(double temperature, long pressure,
                                 double altitude) {
         @Override

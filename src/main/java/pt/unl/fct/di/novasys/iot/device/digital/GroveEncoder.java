@@ -11,18 +11,49 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
+/**
+ * Driver for the Grove rotary encoder. Decodes the two-line quadrature
+ * signal in the background and exposes the latest direction via
+ * {@link #getRotation()}, which clears the pending event on read so each
+ * rotation is reported once.
+ *
+ * <p>Two modes are available:
+ * <ul>
+ *   <li><b>threshold = 0</b>: every detent is reported as a rotation;</li>
+ *   <li><b>threshold &gt; 0</b>: only every {@code N}-th detent in the
+ *       same direction is reported, smoothing out noisy mechanical
+ *       encoders. Direction changes reset the count.</li>
+ * </ul>
+ *
+ * <p>A 1 ms-period sampler arms the listener whenever both lines are
+ * high (the encoder's resting state), so rotation detection is edge-aware
+ * without missing transitions on bouncy contacts.
+ */
 public class GroveEncoder extends DigitalInputDevice {
+    /** Direction of the most recent rotation. */
     public static enum Rotation {
+        /** No rotation observed (or already consumed by {@link #getRotation()}). */
         NONE(0),
+        /** Clockwise (right) rotation. */
         CLOCKWISE(1),
+        /** Counter-clockwise (left) rotation. */
         COUNTER_CLOCKWISE(2);
 
+        /** Wire-format integer value for this rotation. */
         public final int value;
 
         Rotation(int value) { this.value = value; }
 
+        /** @return the wire-format integer for this rotation */
         public int getValue() { return this.value; }
 
+        /**
+         * Looks up a rotation by its integer value. Unknown values return
+         * {@link #NONE}.
+         *
+         * @param value the integer value
+         * @return the matching rotation, or {@link #NONE}
+         */
         public static Rotation fromValue(int value) {
             for (Rotation r : values()) {
                 if (r.value == value) {
@@ -43,6 +74,16 @@ public class GroveEncoder extends DigitalInputDevice {
     private int ticks;
     private Rotation lastRotation;
 
+    /**
+     * Constructs an encoder with explicit detent thresholding.
+     *
+     * @param pi4j      Pi4J context
+     * @param name      human-readable name
+     * @param line      first encoder pin (the second pin is {@code line + 1})
+     * @param ID        caller-assigned device identifier
+     * @param threshold number of consecutive same-direction detents before a
+     *                  rotation is reported; pass {@code 0} to report every detent
+     */
     public GroveEncoder(Context pi4j, String name, int line, int ID,
                         int threshold) {
         super(pi4j,
@@ -88,6 +129,14 @@ public class GroveEncoder extends DigitalInputDevice {
         }, 0, 1, TimeUnit.MILLISECONDS);
     }
 
+    /**
+     * Constructs an encoder that reports every detent (no thresholding).
+     *
+     * @param pi4j Pi4J context
+     * @param name human-readable name
+     * @param line first encoder pin (the second pin is {@code line + 1})
+     * @param ID   caller-assigned device identifier
+     */
     public GroveEncoder(Context pi4j, String name, int line, int ID) {
         this(pi4j, name, line, ID, 0);
     }
@@ -133,6 +182,13 @@ public class GroveEncoder extends DigitalInputDevice {
         }
     }
 
+    /**
+     * Returns the most recently observed rotation and atomically clears
+     * the pending event, so each rotation is reported once.
+     *
+     * @return the latest rotation, or {@link Rotation#NONE} if nothing
+     *         has happened since the last call
+     */
     public Rotation getRotation() {
         return Rotation.fromValue(rotation.getAndSet(Rotation.NONE.getValue()));
     }

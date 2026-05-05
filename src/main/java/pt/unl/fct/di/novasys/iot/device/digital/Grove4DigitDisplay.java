@@ -5,6 +5,17 @@ import com.pi4j.io.gpio.digital.DigitalInput;
 import com.pi4j.io.gpio.digital.DigitalOutput;
 import com.pi4j.io.gpio.digital.DigitalState;
 
+/**
+ * Driver for the Grove 4-Digit Display (TM1637-based seven-segment display).
+ * Communicates over a two-wire bit-banged protocol on a clock pin
+ * ({@code line}) and a data pin ({@code line + 1}). Supports raw segment
+ * writes, decimal numbers (with optional decimal point and minus sign),
+ * scrolling strings, and a small ASCII-to-segments map for letters.
+ *
+ * <p>Brightness is controlled by {@link #BRIGHT_DARKEST},
+ * {@link #BRIGHT_TYPICAL}, and {@link #BRIGHTEST} (constants applied via
+ * {@link #set(int, int, int)}).
+ */
 public class Grove4DigitDisplay extends DigitalOutputDevice {
     private static final byte ADDR_AUTO = 0x40;
     private static final byte ADDR_FIXED = 0x44;
@@ -23,6 +34,14 @@ public class Grove4DigitDisplay extends DigitalOutputDevice {
 
     private boolean pointFlag;
 
+    /**
+     * Constructs a 4-digit display.
+     *
+     * @param pi4j Pi4J context
+     * @param name human-readable name
+     * @param line clock pin (data pin is {@code line + 1})
+     * @param ID   caller-assigned device identifier
+     */
     public Grove4DigitDisplay(Context pi4j, String name, int line, int ID) {
         super(pi4j,
               DigitalOutput.newConfigBuilder(pi4j)
@@ -85,6 +104,14 @@ public class Grove4DigitDisplay extends DigitalOutputDevice {
         return ack;
     }
 
+    /**
+     * Displays four characters at once. Each byte is mapped through the
+     * built-in segment table; values 0–15 are rendered as the
+     * corresponding hex digit, ASCII letters are mapped via
+     * {@code char2segments}, and {@code 0x7f} clears the digit.
+     *
+     * @param disp_data four-element byte array (one entry per digit)
+     */
     public void display(byte[] disp_data) {
         byte[] seg_data = coding(disp_data);
 
@@ -105,6 +132,12 @@ public class Grove4DigitDisplay extends DigitalOutputDevice {
         stop();
     }
 
+    /**
+     * Updates a single digit.
+     *
+     * @param bit_addr  digit position (0–3, leftmost is 0)
+     * @param disp_data byte to display (mapped through the segment table)
+     */
     public void display(int bit_addr, byte disp_data) {
         byte seg_data = coding(disp_data);
 
@@ -122,6 +155,17 @@ public class Grove4DigitDisplay extends DigitalOutputDevice {
         stop();
     }
 
+    /**
+     * Displays a decimal number, optionally showing a decimal point
+     * (when {@code decimal == 2}) and a minus sign for negative values.
+     *
+     * @param num     value to display
+     * @param decimal number of decimal places (the {@code .} segment turns
+     *                on when this is 2)
+     * @param minus   if {@code true}, render a leading {@code -} for
+     *                negative {@code num}; if {@code false}, the absolute
+     *                value is shown
+     */
     public void displayNum(float num, int decimal, boolean minus) {
         int number = (int)Math.round(Math.abs(num) * Math.pow(10, decimal));
 
@@ -148,6 +192,15 @@ public class Grove4DigitDisplay extends DigitalOutputDevice {
         }
     }
 
+    /**
+     * Displays a string. Strings up to four characters fit on the display
+     * unchanged; longer strings scroll left, sleeping {@code loop_delay}
+     * milliseconds between frames.
+     *
+     * @param str        the text to show
+     * @param loop_delay millisecond delay between scroll frames
+     * @throws InterruptedException if the scroll sleep is interrupted
+     */
     void displayStr(String str, int loop_delay) throws InterruptedException {
         int end = str.length();
         if (end <= DIGITS) {
@@ -176,6 +229,11 @@ public class Grove4DigitDisplay extends DigitalOutputDevice {
         }
     }
 
+    /**
+     * Enables or disables the decimal point segment on subsequent writes.
+     *
+     * @param point {@code true} to light the colon / decimal point
+     */
     public void point(boolean point) { this.pointFlag = point; }
 
     private byte[] coding(byte[] disp_data) {
@@ -266,6 +324,7 @@ public class Grove4DigitDisplay extends DigitalOutputDevice {
     }
     // @formatter:on
 
+    /** Clears all four digits. */
     public void clearDisplay() {
         display(0x00, (byte)0x7f);
         display(0x01, (byte)0x7f);
@@ -273,6 +332,7 @@ public class Grove4DigitDisplay extends DigitalOutputDevice {
         display(0x03, (byte)0x7f);
     }
 
+    /** Issues the TM1637 start condition (data falls while clock is high). */
     public void start() {
         dataOut.state(DigitalState.HIGH);
         clk.state(DigitalState.HIGH);
@@ -280,6 +340,7 @@ public class Grove4DigitDisplay extends DigitalOutputDevice {
         clk.state(DigitalState.LOW);
     }
 
+    /** Issues the TM1637 stop condition (data rises while clock is high). */
     public void stop() {
         dataOut.state(DigitalState.LOW);
         clk.state(DigitalState.LOW);
@@ -287,6 +348,17 @@ public class Grove4DigitDisplay extends DigitalOutputDevice {
         clk.state(DigitalState.HIGH);
     }
 
+    /**
+     * Configures the TM1637 command bytes used by subsequent writes.
+     * Typically called once at construction with the desired brightness
+     * level and the standard auto-increment ({@code 0x40}) and address
+     * ({@code 0xC0}) commands.
+     *
+     * @param brightness one of {@link #BRIGHT_DARKEST},
+     *                   {@link #BRIGHT_TYPICAL}, {@link #BRIGHTEST}
+     * @param set_data   data-write command byte
+     * @param set_addr   start-address command byte
+     */
     public void set(int brightness, int set_data, int set_addr) {
         cmd_set_data = set_data;
         cmd_set_addr = set_addr;

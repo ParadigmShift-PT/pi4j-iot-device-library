@@ -17,6 +17,20 @@ import pt.unl.fct.di.novasys.iot.device.I2CDevice;
 
 import java.io.IOException;
 
+/**
+ * Driver for the Grove Gesture Detector (PAJ7620U2). Recognises nine
+ * coarse gestures (up/down/left/right swipe, push/pull, clockwise /
+ * counter-clockwise rotation, wave) and exposes them as
+ * {@link PAJ7620GestureType} values.
+ *
+ * <p>The chip is initialised with a long preset register sequence
+ * (banks 0 and 1) and defaulted to {@link PAJ7620ReportMode#FAR_240FPS}.
+ * Use {@link #getGesture()} to poll for the most recent gesture; the
+ * method returns {@code null} when no gesture has occurred since the
+ * previous call.
+ *
+ * <p>Lives at I²C address {@code 0x73} on bus 1.
+ */
 public class GroveGestureDetector implements I2CDevice {
 	
     public final static int PAJ7620_ADDR = 0x73;
@@ -27,28 +41,37 @@ public class GroveGestureDetector implements I2CDevice {
 
     public final static int PAJ7620_GESTURE_COUNT = 9;
 
+    /** The nine gestures the PAJ7620 can report. */
     public static enum PAJ7620GestureType {
-        UP(0),
-        DOWN(1),
-        LEFT(2),
-        RIGHT(3),
-        PUSH(4),
-        PULL(5),
-        CLOCKWISE(6),
-        COUNTER_CLOCKWISE(7),
-        WAVE(8);
+        /** Hand swipe upward. */ UP(0),
+        /** Hand swipe downward. */ DOWN(1),
+        /** Hand swipe leftward. */ LEFT(2),
+        /** Hand swipe rightward. */ RIGHT(3),
+        /** Hand pushed toward the sensor. */ PUSH(4),
+        /** Hand pulled away from the sensor. */ PULL(5),
+        /** Hand rotated clockwise above the sensor. */ CLOCKWISE(6),
+        /** Hand rotated counter-clockwise above the sensor. */ COUNTER_CLOCKWISE(7),
+        /** Hand wave (rapid back-and-forth). */ WAVE(8);
 
+        /** Wire-format integer for this gesture (matches the chip's bit position). */
         public final int code;
 
         PAJ7620GestureType(int code) { this.code = code; }
     }
 
+    /**
+     * Sampling-rate / range presets. "Far" mode tolerates more distance
+     * but loses sensitivity; "Near" mode is more sensitive but requires
+     * the hand to be closer. Higher FPS picks up faster gestures at the
+     * cost of higher chip activity.
+     */
     public static enum PAJ7620ReportMode {
-        FAR_240FPS(0),
-        FAR_120FPS(1),
-        NEAR_240FPS(2),
-        NEAR_120FPS(3);
+        /** Far range, 240 reports per second. */ FAR_240FPS(0),
+        /** Far range, 120 reports per second. */ FAR_120FPS(1),
+        /** Near range, 240 reports per second. */ NEAR_240FPS(2),
+        /** Near range, 120 reports per second. */ NEAR_120FPS(3);
 
+        /** Wire-format integer for this report mode. */
         public final int code;
 
         PAJ7620ReportMode(int code) { this.code = code; }
@@ -71,6 +94,14 @@ public class GroveGestureDetector implements I2CDevice {
 
     private final I2C detector;
 
+    /**
+     * Opens the I²C handle and runs the PAJ7620 init sequence (bank
+     * select, identity check, register preset, report mode default).
+     *
+     * @param pi4j Pi4J context
+     * @throws IOException if the chip is missing or returns invalid
+     *                     identity bytes
+     */
     public GroveGestureDetector(Context pi4j) throws IOException {
         I2CConfigBuilder configtext = I2C.newConfigBuilder(pi4j);
         configtext.id("Grovepi-plus" + PAJ7620_ADDR);
@@ -104,6 +135,13 @@ public class GroveGestureDetector implements I2CDevice {
         setReportMode(PAJ7620ReportMode.FAR_240FPS);
     }
 
+    /**
+     * Polls the chip's gesture-result register and decodes the latest
+     * recognised gesture.
+     *
+     * @return the most recent gesture, or {@code null} if no gesture has
+     *         been recognised since the last call
+     */
     public PAJ7620GestureType getGesture() {
         PAJ7620GestureType gesture = null;
 
