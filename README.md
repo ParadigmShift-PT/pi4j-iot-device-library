@@ -22,8 +22,10 @@ on swarm systems (work package 6):
 > **Original authors:** João Brilha, João Leitão
 
 The fork was created to serve as the IoT device layer used by the StoneFlux
-edge gateway and is maintained by [ParadigmShift](https://www.paradigmshift.pt).
-All original authorship is acknowledged and preserved. Additions and
+edge gateway. It is provided and evolved independently of the original work by
+[ParadigmShift](https://www.paradigmshift.pt) — releases, roadmap, and support
+follow the StoneFlux project, not the upstream NOVA FCT / TaRDIS effort.
+All original authorship is acknowledged and preserved; additions and
 modifications made after the fork are copyright ParadigmShift.
 
 ---
