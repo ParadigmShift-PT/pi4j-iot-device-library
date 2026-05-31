@@ -33,3 +33,6 @@ replay_pid*
 */.DS_Store/
 
 ._*
+
+# Claude Code per-project guidance (local, not committed)
+CLAUDE.md
